@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import EditableTable from './EditableTable'
 import ValidationResults from './ValidationResults'
 import ExportButtons from './ExportButtons'
+import ValidationWrapper from './ValidationWrapper'
 
 const DataPreview = ({ 
   stringsData, 
@@ -15,6 +16,7 @@ const DataPreview = ({
   const [isValidating, setIsValidating] = useState(false)
   const [editedStringsData, setEditedStringsData] = useState(stringsData)
   const [editedClassificationsData, setEditedClassificationsData] = useState(classificationsData)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
 
   const handleValidate = async () => {
     setIsValidating(true)
@@ -45,6 +47,7 @@ const DataPreview = ({
 
   const handleStringsDataChange = (newData) => {
     setEditedStringsData(newData)
+    setHasUnsavedChanges(true)
     // Clear validation results when data changes
     if (validationResults) {
       setValidationResults(null)
@@ -53,10 +56,26 @@ const DataPreview = ({
 
   const handleClassificationsDataChange = (newData) => {
     setEditedClassificationsData(newData)
+    setHasUnsavedChanges(true)
     // Clear validation results when data changes
     if (validationResults) {
       setValidationResults(null)
     }
+  }
+
+  const handleSaveChanges = () => {
+    // This would typically save to the backend or update parent state
+    setStringsData(editedStringsData)
+    setClassificationsData(editedClassificationsData)
+    setHasUnsavedChanges(false)
+    alert('Changes saved successfully!')
+  }
+
+  const handleCancelChanges = () => {
+    setEditedStringsData(stringsData)
+    setEditedClassificationsData(classificationsData)
+    setHasUnsavedChanges(false)
+    setValidationResults(null)
   }
 
   const getTableHeaders = (data) => {
@@ -73,34 +92,90 @@ const DataPreview = ({
             <button className="button button-secondary" onClick={onBackToUpload}>
               Back to Upload
             </button>
-            <button className="button button-primary" onClick={onEditData}>
-              {isEditMode ? 'View Mode' : 'Edit Data'}
-            </button>
+            {isEditMode ? (
+              <>
+                <button className="button button-secondary" onClick={handleCancelChanges}>
+                  Cancel
+                </button>
+                <button 
+                  className="button button-success" 
+                  onClick={handleSaveChanges}
+                  disabled={!hasUnsavedChanges}
+                >
+                  Save Changes
+                </button>
+                <button className="button button-primary" onClick={onEditData}>
+                  View Mode
+                </button>
+              </>
+            ) : (
+              <button className="button button-primary" onClick={onEditData}>
+                Edit Data
+              </button>
+            )}
           </div>
         </div>
 
-        {stringsData.length > 0 && (
-          <div style={{ marginBottom: '30px' }}>
-            <h3>Strings Data ({stringsData.length} rows)</h3>
-            <EditableTable
-              data={isEditMode ? editedStringsData : stringsData}
-              headers={getTableHeaders(stringsData)}
-              onChange={handleStringsDataChange}
-              editable={isEditMode}
-            />
-          </div>
-        )}
+        {isEditMode ? (
+          <ValidationWrapper
+            stringsData={editedStringsData}
+            classificationsData={classificationsData}
+            onSave={handleSaveChanges}
+            onCancel={handleCancelChanges}
+            hasUnsavedChanges={hasUnsavedChanges}
+          >
+            {stringsData.length > 0 && (
+              <div style={{ marginBottom: '30px' }}>
+                <h3>Strings Data ({stringsData.length} rows)</h3>
+                <EditableTable
+                  data={editedStringsData}
+                  headers={getTableHeaders(stringsData)}
+                  onChange={handleStringsDataChange}
+                  editable={true}
+                  classificationsData={classificationsData}
+                  showValidation={classificationsData.length > 0}
+                />
+              </div>
+            )}
 
-        {classificationsData.length > 0 && (
-          <div style={{ marginBottom: '30px' }}>
-            <h3>Classifications Data ({classificationsData.length} rows)</h3>
-            <EditableTable
-              data={isEditMode ? editedClassificationsData : classificationsData}
-              headers={getTableHeaders(classificationsData)}
-              onChange={handleClassificationsDataChange}
-              editable={isEditMode}
-            />
-          </div>
+            {classificationsData.length > 0 && (
+              <div style={{ marginBottom: '30px' }}>
+                <h3>Classifications Data ({classificationsData.length} rows)</h3>
+                <EditableTable
+                  data={editedClassificationsData}
+                  headers={getTableHeaders(classificationsData)}
+                  onChange={handleClassificationsDataChange}
+                  editable={true}
+                />
+              </div>
+            )}
+          </ValidationWrapper>
+        ) : (
+          <>
+            {stringsData.length > 0 && (
+              <div style={{ marginBottom: '30px' }}>
+                <h3>Strings Data ({stringsData.length} rows)</h3>
+                <EditableTable
+                  data={stringsData}
+                  headers={getTableHeaders(stringsData)}
+                  onChange={handleStringsDataChange}
+                  editable={false}
+                />
+              </div>
+            )}
+
+            {classificationsData.length > 0 && (
+              <div style={{ marginBottom: '30px' }}>
+                <h3>Classifications Data ({classificationsData.length} rows)</h3>
+                <EditableTable
+                  data={classificationsData}
+                  headers={getTableHeaders(classificationsData)}
+                  onChange={handleClassificationsDataChange}
+                  editable={false}
+                />
+              </div>
+            )}
+          </>
         )}
 
         {stringsData.length === 0 && classificationsData.length === 0 && (

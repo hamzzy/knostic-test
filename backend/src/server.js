@@ -6,6 +6,7 @@ const morgan = require('morgan');
 const path = require('path');
 const { parseCSV, validateHeaders } = require('./csvParser');
 const { validateStringsAgainstClassifications, validateRequiredHeaders } = require('./validator');
+const { exportToCSV, validateExportData } = require('./csvExporter');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -144,12 +145,59 @@ app.post('/api/csv/validate', (req, res) => {
 /**
  * POST /api/csv/export
  * Export data as CSV
- * This is a placeholder for Stage 03 implementation
  */
 app.post('/api/csv/export', (req, res) => {
-  res.json({
-    message: 'Export endpoint - to be implemented in Stage 03'
-  });
+  try {
+    const { rows, headers, filename = 'export.csv' } = req.body;
+    
+    // Validate input
+    if (!rows || !Array.isArray(rows)) {
+      return res.status(400).json({
+        error: 'rows is required and must be an array'
+      });
+    }
+    
+    if (!headers || !Array.isArray(headers)) {
+      return res.status(400).json({
+        error: 'headers is required and must be an array'
+      });
+    }
+    
+    // Validate export data
+    const validation = validateExportData(rows, headers);
+    if (!validation.valid) {
+      return res.status(400).json({
+        error: validation.error
+      });
+    }
+    
+    // Set response headers for CSV download
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'no-cache');
+    
+    // Create CSV stream and pipe to response
+    const csvStream = exportToCSV(rows, headers);
+    
+    csvStream.on('error', (error) => {
+      console.error('CSV export error:', error);
+      if (!res.headersSent) {
+        res.status(500).json({
+          error: 'Failed to generate CSV'
+        });
+      }
+    });
+    
+    csvStream.pipe(res);
+    
+  } catch (error) {
+    console.error('Export error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: 'Failed to export data'
+      });
+    }
+  }
 });
 
 // Health check endpoint

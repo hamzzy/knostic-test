@@ -279,13 +279,135 @@ describe('CSV Upload API', () => {
   });
 
   describe('POST /api/csv/export', () => {
-    test('should return placeholder response', async () => {
+    test('should export data as CSV', async () => {
+      const rows = [
+        { Topic: 'Payments', SubTopic: 'ACH', Industry: 'Fintech' },
+        { Topic: 'Banking', SubTopic: 'Loans', Industry: 'Finance' }
+      ];
+      const headers = ['Topic', 'SubTopic', 'Industry'];
+      
       const response = await request(app)
         .post('/api/csv/export')
-        .send({ data: [] })
+        .send({ rows, headers, filename: 'test.csv' })
         .expect(200);
 
-      expect(response.body.message).toBe('Export endpoint - to be implemented in Stage 03');
+      expect(response.headers['content-type']).toContain('text/csv');
+      expect(response.headers['content-disposition']).toContain('attachment; filename="test.csv"');
+      expect(response.text).toContain('Topic,SubTopic,Industry');
+      expect(response.text).toContain('Payments,ACH,Fintech');
+      expect(response.text).toContain('Banking,Loans,Finance');
+    });
+
+    test('should export with custom filename', async () => {
+      const rows = [{ Topic: 'Payments', SubTopic: 'ACH', Industry: 'Fintech' }];
+      const headers = ['Topic', 'SubTopic', 'Industry'];
+      
+      const response = await request(app)
+        .post('/api/csv/export')
+        .send({ rows, headers, filename: 'custom-export.csv' })
+        .expect(200);
+
+      expect(response.headers['content-disposition']).toContain('attachment; filename="custom-export.csv"');
+    });
+
+    test('should use default filename when not provided', async () => {
+      const rows = [{ Topic: 'Payments', SubTopic: 'ACH', Industry: 'Fintech' }];
+      const headers = ['Topic', 'SubTopic', 'Industry'];
+      
+      const response = await request(app)
+        .post('/api/csv/export')
+        .send({ rows, headers })
+        .expect(200);
+
+      expect(response.headers['content-disposition']).toContain('attachment; filename="export.csv"');
+    });
+
+    test('should handle empty rows', async () => {
+      const rows = [];
+      const headers = ['Topic', 'SubTopic', 'Industry'];
+      
+      const response = await request(app)
+        .post('/api/csv/export')
+        .send({ rows, headers })
+        .expect(200);
+
+      expect(response.text).toBe('Topic,SubTopic,Industry\n');
+    });
+
+    test('should reject missing rows', async () => {
+      const response = await request(app)
+        .post('/api/csv/export')
+        .send({ headers: ['Topic'] })
+        .expect(400);
+
+      expect(response.body.error).toBe('rows is required and must be an array');
+    });
+
+    test('should reject missing headers', async () => {
+      const response = await request(app)
+        .post('/api/csv/export')
+        .send({ rows: [{ Topic: 'Test' }] })
+        .expect(400);
+
+      expect(response.body.error).toBe('headers is required and must be an array');
+    });
+
+    test('should reject invalid rows type', async () => {
+      const response = await request(app)
+        .post('/api/csv/export')
+        .send({ rows: 'not an array', headers: ['Topic'] })
+        .expect(400);
+
+      expect(response.body.error).toBe('rows is required and must be an array');
+    });
+
+    test('should reject invalid headers type', async () => {
+      const response = await request(app)
+        .post('/api/csv/export')
+        .send({ rows: [{ Topic: 'Test' }], headers: 'not an array' })
+        .expect(400);
+
+      expect(response.body.error).toBe('headers is required and must be an array');
+    });
+
+    test('should reject empty headers', async () => {
+      const response = await request(app)
+        .post('/api/csv/export')
+        .send({ rows: [{ Topic: 'Test' }], headers: [] })
+        .expect(400);
+
+      expect(response.body.error).toBe('Headers cannot be empty');
+    });
+
+    test('should reject inconsistent row structure', async () => {
+      const rows = [
+        { Topic: 'Payments', SubTopic: 'ACH' },
+        { Topic: 'Banking', SubTopic: 'Loans', Industry: 'Finance' }
+      ];
+      const headers = ['Topic', 'SubTopic', 'Industry'];
+      
+      const response = await request(app)
+        .post('/api/csv/export')
+        .send({ rows, headers })
+        .expect(400);
+
+      expect(response.body.error).toBe('All rows must have consistent structure');
+    });
+
+    test('should handle special characters in data', async () => {
+      const rows = [
+        { Topic: 'Payments, Inc', SubTopic: 'ACH "Transfer"', Industry: 'Fintech\nNewline' }
+      ];
+      const headers = ['Topic', 'SubTopic', 'Industry'];
+      
+      const response = await request(app)
+        .post('/api/csv/export')
+        .send({ rows, headers })
+        .expect(200);
+
+      expect(response.text).toContain('"Payments, Inc"');
+      expect(response.text).toContain('"ACH ""Transfer"""');
+      expect(response.text).toContain('"Fintech\nNewline"');
     });
   });
 });

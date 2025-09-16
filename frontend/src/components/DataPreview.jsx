@@ -6,15 +6,19 @@ import ExportButtons from './ExportButtons'
 const DataPreview = ({ 
   stringsData, 
   classificationsData, 
+  editedStringsData,
+  editedClassificationsData,
   onBackToUpload, 
   onEditData,
+  onStringsDataChange,
+  onClassificationsDataChange,
   isEditMode 
 }) => {
-  console.log('DataPreview received:', { stringsData, classificationsData })
+  console.log('DataPreview received:', { stringsData, classificationsData, editedStringsData, editedClassificationsData })
   const [validationResults, setValidationResults] = useState(null)
   const [isValidating, setIsValidating] = useState(false)
-  const [editedStringsData, setEditedStringsData] = useState(stringsData)
-  const [editedClassificationsData, setEditedClassificationsData] = useState(classificationsData)
+  const [invalidStringsRows, setInvalidStringsRows] = useState([])
+  const [invalidClassificationsRows, setInvalidClassificationsRows] = useState([])
 
   const handleValidate = async () => {
     setIsValidating(true)
@@ -25,8 +29,14 @@ const DataPreview = ({
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          stringsData: editedStringsData,
-          classificationsData: editedClassificationsData
+          strings: {
+            headers: getTableHeaders(editedStringsData),
+            rows: editedStringsData
+          },
+          classifications: {
+            headers: getTableHeaders(editedClassificationsData),
+            rows: editedClassificationsData
+          }
         })
       })
 
@@ -35,6 +45,7 @@ const DataPreview = ({
     } catch (error) {
       console.error('Validation error:', error)
       setValidationResults({
+        success: false,
         valid: false,
         error: 'Validation failed: ' + error.message
       })
@@ -44,7 +55,7 @@ const DataPreview = ({
   }
 
   const handleStringsDataChange = (newData) => {
-    setEditedStringsData(newData)
+    onStringsDataChange(newData)
     // Clear validation results when data changes
     if (validationResults) {
       setValidationResults(null)
@@ -52,11 +63,16 @@ const DataPreview = ({
   }
 
   const handleClassificationsDataChange = (newData) => {
-    setEditedClassificationsData(newData)
+    onClassificationsDataChange(newData)
     // Clear validation results when data changes
     if (validationResults) {
       setValidationResults(null)
     }
+  }
+
+  const handleInvalidRowsChange = (invalidIndices) => {
+    setInvalidStringsRows(invalidIndices)
+    setInvalidClassificationsRows(invalidIndices)
   }
 
   const getTableHeaders = (data) => {
@@ -83,10 +99,13 @@ const DataPreview = ({
           <div style={{ marginBottom: '30px' }}>
             <h3>Strings Data ({stringsData.length} rows)</h3>
             <EditableTable
-              data={isEditMode ? editedStringsData : stringsData}
+              data={stringsData}
               headers={getTableHeaders(stringsData)}
               onChange={handleStringsDataChange}
               editable={isEditMode}
+              invalidRowIndices={invalidStringsRows}
+              rowsPerPage={10}
+              enablePagination={true}
             />
           </div>
         )}
@@ -95,10 +114,12 @@ const DataPreview = ({
           <div style={{ marginBottom: '30px' }}>
             <h3>Classifications Data ({classificationsData.length} rows)</h3>
             <EditableTable
-              data={isEditMode ? editedClassificationsData : classificationsData}
+              data={classificationsData}
               headers={getTableHeaders(classificationsData)}
               onChange={handleClassificationsDataChange}
               editable={isEditMode}
+              invalidRowIndices={invalidClassificationsRows}
+              rowsPerPage={10}
             />
           </div>
         )}
@@ -112,8 +133,8 @@ const DataPreview = ({
 
       {stringsData.length > 0 && classificationsData.length > 0 && (
         <div className="preview-section">
-          <h3>Validation & Export</h3>
-          <p>Validate that all strings data has corresponding classifications before exporting.</p>
+          <h3>Validation</h3>
+          <p>Validate that all strings data has corresponding classifications.</p>
           
           <div className="button-group">
             <button
@@ -133,7 +154,10 @@ const DataPreview = ({
           </div>
 
           {validationResults && (
-            <ValidationResults results={validationResults} />
+            <ValidationResults 
+              results={validationResults} 
+              onInvalidRowsChange={handleInvalidRowsChange}
+            />
           )}
         </div>
       )}
@@ -141,13 +165,14 @@ const DataPreview = ({
       {(stringsData.length > 0 || classificationsData.length > 0) && (
         <div className="preview-section">
           <h3>Export</h3>
-          <p>Export your data as CSV files. Data will be automatically validated before export.</p>
+          <p>Export your data as CSV files.</p>
           
           <ExportButtons
             stringsData={editedStringsData}
             classificationsData={editedClassificationsData}
             stringsHeaders={getTableHeaders(editedStringsData)}
             classificationsHeaders={getTableHeaders(editedClassificationsData)}
+            validationPassed={validationResults?.valid === true}
           />
         </div>
       )}

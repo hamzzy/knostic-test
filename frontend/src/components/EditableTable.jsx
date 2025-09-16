@@ -1,12 +1,31 @@
 import React, { useState, useEffect } from 'react'
 
-const EditableTable = ({ data, headers, onChange, editable = false }) => {
+const EditableTable = ({ data, headers, onChange, editable = false, invalidRowIndices = [], rowsPerPage = 10, enablePagination = true }) => {
   const [localData, setLocalData] = useState(data)
   const [editingCell, setEditingCell] = useState(null)
+  const [currentPage, setCurrentPage] = useState(1)
 
   useEffect(() => {
     setLocalData(data)
+    setCurrentPage(1) // Reset to first page when data changes
   }, [data])
+
+  // Pagination logic
+  const totalPages = enablePagination ? Math.ceil(localData.length / rowsPerPage) : 1
+  const startIndex = enablePagination ? (currentPage - 1) * rowsPerPage : 0
+  const endIndex = enablePagination ? startIndex + rowsPerPage : localData.length
+  const currentData = enablePagination ? localData.slice(startIndex, endIndex) : localData
+
+  const goToPage = (page) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page)
+    }
+  }
+
+  const goToFirstPage = () => goToPage(1)
+  const goToLastPage = () => goToPage(totalPages)
+  const goToPreviousPage = () => goToPage(currentPage - 1)
+  const goToNextPage = () => goToPage(currentPage + 1)
 
   const handleCellChange = (rowIndex, header, value) => {
     const newData = localData.map((row, index) => 
@@ -70,16 +89,23 @@ const EditableTable = ({ data, headers, onChange, editable = false }) => {
 
   return (
     <div>
-      <div className="button-group" style={{ marginBottom: '16px' }}>
-        {editable && (
-          <button className="button button-primary" onClick={handleAddRow}>
-            Add Row
-          </button>
+      <div className="button-group" style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          {editable && (
+            <button className="button button-primary" onClick={handleAddRow}>
+              Add Row
+            </button>
+          )}
+        </div>
+        {enablePagination && (
+          <div style={{ fontSize: '14px', color: '#666' }}>
+            Showing {startIndex + 1}-{Math.min(endIndex, localData.length)} of {localData.length} rows
+          </div>
         )}
       </div>
 
-      <div style={{ overflowX: 'auto' }}>
-        <table className="preview-table">
+      <div style={{ overflowX: 'auto', maxWidth: '100%' }}>
+        <table className={`preview-table ${enablePagination ? 'paginated' : ''}`} style={{ width: '100%' }}>
           <thead>
             <tr>
               {editable && <th style={{ width: '80px' }}>Actions</th>}
@@ -89,13 +115,23 @@ const EditableTable = ({ data, headers, onChange, editable = false }) => {
             </tr>
           </thead>
           <tbody>
-            {localData.map((row, rowIndex) => (
-              <tr key={rowIndex}>
+            {currentData.map((row, localIndex) => {
+              const actualRowIndex = startIndex + localIndex
+              const isInvalid = invalidRowIndices.includes(actualRowIndex)
+              return (
+                <tr 
+                  key={actualRowIndex}
+                  className={isInvalid ? 'invalid-row' : ''}
+                  style={isInvalid ? {
+                    backgroundColor: '#fef2f2',
+                    borderLeft: '4px solid #ef4444'
+                  } : {}}
+                >
                 {editable && (
                   <td>
                     <button
                       className="remove-button"
-                      onClick={() => handleDeleteRow(rowIndex)}
+                      onClick={() => handleDeleteRow(actualRowIndex)}
                       style={{ fontSize: '12px', padding: '4px 8px' }}
                     >
                       Delete
@@ -103,7 +139,7 @@ const EditableTable = ({ data, headers, onChange, editable = false }) => {
                   </td>
                 )}
                 {headers.map(header => {
-                  const cellKey = `${rowIndex}-${header}`
+                  const cellKey = `${actualRowIndex}-${header}`
                   const isEditing = editingCell === cellKey
                   const value = row[header] || ''
 
@@ -113,9 +149,9 @@ const EditableTable = ({ data, headers, onChange, editable = false }) => {
                         <input
                           type="text"
                           value={value}
-                          onChange={(e) => handleCellChange(rowIndex, header, e.target.value)}
+                          onChange={(e) => handleCellChange(actualRowIndex, header, e.target.value)}
                           onBlur={stopEditing}
-                          onKeyDown={(e) => handleKeyPress(e, rowIndex, header)}
+                          onKeyDown={(e) => handleKeyPress(e, actualRowIndex, header)}
                           autoFocus
                           style={{
                             width: '100%',
@@ -126,7 +162,7 @@ const EditableTable = ({ data, headers, onChange, editable = false }) => {
                         />
                       ) : (
                         <div
-                          onClick={() => startEditing(rowIndex, header)}
+                          onClick={() => startEditing(actualRowIndex, header)}
                           style={{
                             cursor: editable ? 'pointer' : 'default',
                             minHeight: '20px',
@@ -142,11 +178,88 @@ const EditableTable = ({ data, headers, onChange, editable = false }) => {
                     </td>
                   )
                 })}
-              </tr>
-            ))}
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
+
+      {/* Pagination Controls */}
+      {enablePagination && totalPages > 1 && (
+        <div style={{ 
+          marginTop: '20px', 
+          display: 'flex', 
+          justifyContent: 'center', 
+          alignItems: 'center',
+          gap: '8px',
+          flexWrap: 'wrap'
+        }}>
+          <button 
+            className="button button-secondary"
+            onClick={goToFirstPage}
+            disabled={currentPage === 1}
+            style={{ padding: '6px 12px', fontSize: '12px' }}
+          >
+            First
+          </button>
+          <button 
+            className="button button-secondary"
+            onClick={goToPreviousPage}
+            disabled={currentPage === 1}
+            style={{ padding: '6px 12px', fontSize: '12px' }}
+          >
+            Previous
+          </button>
+          
+          <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              let pageNum;
+              if (totalPages <= 5) {
+                pageNum = i + 1;
+              } else if (currentPage <= 3) {
+                pageNum = i + 1;
+              } else if (currentPage >= totalPages - 2) {
+                pageNum = totalPages - 4 + i;
+              } else {
+                pageNum = currentPage - 2 + i;
+              }
+              
+              return (
+                <button
+                  key={pageNum}
+                  className={`button ${currentPage === pageNum ? 'button-primary' : 'button-secondary'}`}
+                  onClick={() => goToPage(pageNum)}
+                  style={{ 
+                    padding: '6px 12px', 
+                    fontSize: '12px',
+                    minWidth: '32px'
+                  }}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
+          </div>
+          
+          <button 
+            className="button button-secondary"
+            onClick={goToNextPage}
+            disabled={currentPage === totalPages}
+            style={{ padding: '6px 12px', fontSize: '12px' }}
+          >
+            Next
+          </button>
+          <button 
+            className="button button-secondary"
+            onClick={goToLastPage}
+            disabled={currentPage === totalPages}
+            style={{ padding: '6px 12px', fontSize: '12px' }}
+          >
+            Last
+          </button>
+        </div>
+      )}
 
       {editable && (
         <div style={{ marginTop: '16px', fontSize: '14px', color: '#666' }}>

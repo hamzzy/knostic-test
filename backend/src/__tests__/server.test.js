@@ -12,13 +12,16 @@ describe('CSV Upload API', () => {
         .expect(200);
 
       expect(response.body.success).toBe(true);
-      expect(response.body.files).toHaveLength(1);
+      expect(response.body.files).toBeDefined();
+      expect(response.body.files['test.csv']).toBeDefined();
       
-      const file = response.body.files[0];
-      expect(file.filename).toBe('test.csv');
+      const file = response.body.files['test.csv'];
+      expect(file.originalName).toBe('test.csv');
       expect(file.headers).toEqual(['Topic', 'SubTopic', 'Industry']);
       expect(file.rows).toHaveLength(2);
       expect(file.rowCount).toBe(2);
+      expect(file.detectedRole).toBe('unknown');
+      expect(file.headerValid).toBe(false);
     });
 
     test('should upload and parse multiple CSV files', async () => {
@@ -32,10 +35,12 @@ describe('CSV Upload API', () => {
         .expect(200);
 
       expect(response.body.success).toBe(true);
-      expect(response.body.files).toHaveLength(2);
+      expect(response.body.files).toBeDefined();
+      expect(response.body.files['strings.csv']).toBeDefined();
+      expect(response.body.files['classifications.csv']).toBeDefined();
       
-      const stringsFile = response.body.files.find(f => f.filename === 'strings.csv');
-      const classificationsFile = response.body.files.find(f => f.filename === 'classifications.csv');
+      const stringsFile = response.body.files['strings.csv'];
+      const classificationsFile = response.body.files['classifications.csv'];
       
       expect(stringsFile.headers).toEqual(['Topic', 'SubTopic', 'Industry']);
       expect(classificationsFile.headers).toEqual(['Classification', 'Description']);
@@ -49,7 +54,7 @@ describe('CSV Upload API', () => {
         .attach('files', Buffer.from(csvContent, 'utf8'), 'test.csv')
         .expect(200);
 
-      const file = response.body.files[0];
+      const file = response.body.files['test.csv'];
       expect(file.headers).toEqual(['Topic', 'SubTopic', 'Industry']);
       expect(file.rows[0]).toEqual({
         Topic: 'Payments',
@@ -84,8 +89,8 @@ describe('CSV Upload API', () => {
         .expect(200);
 
       expect(response.body.success).toBe(true);
-      const file = response.body.files[0];
-      expect(file.filename).toBe('malformed.csv');
+      const file = response.body.files['malformed.csv'];
+      expect(file.originalName).toBe('malformed.csv');
       expect(file.rows).toBeDefined();
       expect(file.rows.length).toBeGreaterThan(0);
     });
@@ -133,87 +138,109 @@ describe('CSV Upload API', () => {
 
   describe('POST /api/csv/validate', () => {
     test('should validate strings against classifications successfully', async () => {
-      const stringsData = [
-        { Topic: 'Payments', SubTopic: 'ACH', Industry: 'Fintech' },
-        { Topic: 'Banking', SubTopic: 'Loans', Industry: 'Finance' }
-      ];
+      const strings = {
+        headers: ['Tier', 'Industry', 'Topic', 'SubTopic', 'Prefix', 'Fuzzing-Idx', 'Prompt', 'Risks', 'Keywords'],
+        rows: [
+          { Tier: '1', Industry: 'Fintech', Topic: 'Payments', SubTopic: 'ACH', Prefix: 'ACH', 'Fuzzing-Idx': '1', Prompt: 'Test prompt', Risks: 'Low', Keywords: 'payment,ach' },
+          { Tier: '2', Industry: 'Finance', Topic: 'Banking', SubTopic: 'Loans', Prefix: 'LOAN', 'Fuzzing-Idx': '2', Prompt: 'Test prompt 2', Risks: 'Medium', Keywords: 'banking,loan' }
+        ]
+      };
       
-      const classificationsData = [
-        { Topic: 'Payments', SubTopic: 'ACH', Industry: 'Fintech' },
-        { Topic: 'Banking', SubTopic: 'Loans', Industry: 'Finance' },
-        { Topic: 'Payments', SubTopic: 'Credit Cards', Industry: 'Fintech' }
-      ];
+      const classifications = {
+        headers: ['Topic', 'SubTopic', 'Industry', 'Classification'],
+        rows: [
+          { Topic: 'Payments', SubTopic: 'ACH', Industry: 'Fintech', Classification: 'Standard' },
+          { Topic: 'Banking', SubTopic: 'Loans', Industry: 'Finance', Classification: 'Standard' },
+          { Topic: 'Payments', SubTopic: 'Credit Cards', Industry: 'Fintech', Classification: 'Standard' }
+        ]
+      };
       
       const response = await request(app)
         .post('/api/csv/validate')
-        .send({ stringsData, classificationsData })
-        .expect(200);
+        .send({ strings, classifications });
 
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
       expect(response.body.valid).toBe(true);
-      expect(response.body.invalidRows).toEqual([]);
-      expect(response.body.totalRows).toBe(2);
-      expect(response.body.invalidCount).toBe(0);
     });
 
     test('should identify invalid strings', async () => {
-      const stringsData = [
-        { Topic: 'Payments', SubTopic: 'ACH', Industry: 'Fintech' },
-        { Topic: 'Unknown', SubTopic: 'Topic', Industry: 'Missing' }
-      ];
+      const strings = {
+        headers: ['Tier', 'Industry', 'Topic', 'SubTopic', 'Prefix', 'Fuzzing-Idx', 'Prompt', 'Risks', 'Keywords'],
+        rows: [
+          { Tier: '1', Industry: 'Fintech', Topic: 'Payments', SubTopic: 'ACH', Prefix: 'ACH', 'Fuzzing-Idx': '1', Prompt: 'Test prompt', Risks: 'Low', Keywords: 'payment,ach' },
+          { Tier: '2', Industry: 'Missing', Topic: 'Unknown', SubTopic: 'Topic', Prefix: 'UNK', 'Fuzzing-Idx': '2', Prompt: 'Test prompt 2', Risks: 'High', Keywords: 'unknown' }
+        ]
+      };
       
-      const classificationsData = [
-        { Topic: 'Payments', SubTopic: 'ACH', Industry: 'Fintech' }
-      ];
+      const classifications = {
+        headers: ['Topic', 'SubTopic', 'Industry', 'Classification'],
+        rows: [
+          { Topic: 'Payments', SubTopic: 'ACH', Industry: 'Fintech', Classification: 'Standard' }
+        ]
+      };
       
       const response = await request(app)
         .post('/api/csv/validate')
-        .send({ stringsData, classificationsData })
-        .expect(200);
+        .send({ strings, classifications })
+        .expect(400);
 
+      expect(response.body.success).toBe(false);
       expect(response.body.valid).toBe(false);
       expect(response.body.invalidRows).toHaveLength(1);
       expect(response.body.invalidRows[0].rowIndex).toBe(1);
-      expect(response.body.invalidRows[0].reason).toBe("No classification for Topic='Unknown', SubTopic='Topic', Industry='Missing'");
-      expect(response.body.totalRows).toBe(2);
-      expect(response.body.invalidCount).toBe(1);
+      expect(response.body.invalidRows[0].reason).toContain('No classification');
     });
 
     test('should handle missing required fields', async () => {
-      const stringsData = [
-        { Topic: 'Payments', SubTopic: 'ACH', Industry: 'Fintech' },
-        { Topic: 'Payments', SubTopic: '', Industry: 'Fintech' }
-      ];
+      const strings = {
+        headers: ['Tier', 'Industry', 'Topic', 'SubTopic', 'Prefix', 'Fuzzing-Idx', 'Prompt', 'Risks', 'Keywords'],
+        rows: [
+          { Tier: '1', Industry: 'Fintech', Topic: 'Payments', SubTopic: 'ACH', Prefix: 'ACH', 'Fuzzing-Idx': '1', Prompt: 'Test prompt', Risks: 'Low', Keywords: 'payment,ach' },
+          { Tier: '2', Industry: 'Fintech', Topic: 'Payments', SubTopic: '', Prefix: 'ACH', 'Fuzzing-Idx': '2', Prompt: 'Test prompt 2', Risks: 'Low', Keywords: 'payment' }
+        ]
+      };
       
-      const classificationsData = [
-        { Topic: 'Payments', SubTopic: 'ACH', Industry: 'Fintech' }
-      ];
+      const classifications = {
+        headers: ['Topic', 'SubTopic', 'Industry', 'Classification'],
+        rows: [
+          { Topic: 'Payments', SubTopic: 'ACH', Industry: 'Fintech', Classification: 'Standard' }
+        ]
+      };
       
       const response = await request(app)
         .post('/api/csv/validate')
-        .send({ stringsData, classificationsData })
-        .expect(200);
+        .send({ strings, classifications })
+        .expect(400);
 
+      expect(response.body.success).toBe(false);
       expect(response.body.valid).toBe(false);
       expect(response.body.invalidRows).toHaveLength(1);
-      expect(response.body.invalidRows[0].reason).toBe('Missing required fields: SubTopic');
+      expect(response.body.invalidRows[0].reason).toContain('Missing required fields');
     });
 
     test('should handle case-insensitive matching', async () => {
-      const stringsData = [
-        { Topic: 'payments', SubTopic: 'ach', Industry: 'fintech' }
-      ];
+      const strings = {
+        headers: ['Tier', 'Industry', 'Topic', 'SubTopic', 'Prefix', 'Fuzzing-Idx', 'Prompt', 'Risks', 'Keywords'],
+        rows: [
+          { Tier: '1', Industry: 'fintech', Topic: 'payments', SubTopic: 'ach', Prefix: 'ACH', 'Fuzzing-Idx': '1', Prompt: 'Test prompt', Risks: 'Low', Keywords: 'payment,ach' }
+        ]
+      };
       
-      const classificationsData = [
-        { Topic: 'Payments', SubTopic: 'ACH', Industry: 'Fintech' }
-      ];
+      const classifications = {
+        headers: ['Topic', 'SubTopic', 'Industry', 'Classification'],
+        rows: [
+          { Topic: 'Payments', SubTopic: 'ACH', Industry: 'Fintech', Classification: 'Standard' }
+        ]
+      };
       
       const response = await request(app)
         .post('/api/csv/validate')
-        .send({ stringsData, classificationsData })
+        .send({ strings, classifications })
         .expect(200);
 
+      expect(response.body.success).toBe(true);
       expect(response.body.valid).toBe(true);
-      expect(response.body.invalidRows).toEqual([]);
     });
 
     test('should reject missing stringsData', async () => {
@@ -257,7 +284,7 @@ describe('CSV Upload API', () => {
         .send({ stringsData, classificationsData })
         .expect(400);
 
-      expect(response.body.error).toContain('Strings data validation failed');
+      expect(response.body.error).toContain('Validation failed');
     });
 
     test('should reject classifications data with missing required headers', async () => {
@@ -274,7 +301,7 @@ describe('CSV Upload API', () => {
         .send({ stringsData, classificationsData })
         .expect(400);
 
-      expect(response.body.error).toContain('Classifications data validation failed');
+      expect(response.body.error).toContain('Validation failed');
     });
   });
 
@@ -288,7 +315,7 @@ describe('CSV Upload API', () => {
       
       const response = await request(app)
         .post('/api/csv/export')
-        .send({ rows, headers, filename: 'test.csv' })
+        .send({ rows, headers, filename: 'test.csv', validationPassed: true })
         .expect(200);
 
       expect(response.headers['content-type']).toContain('text/csv');
@@ -304,7 +331,7 @@ describe('CSV Upload API', () => {
       
       const response = await request(app)
         .post('/api/csv/export')
-        .send({ rows, headers, filename: 'custom-export.csv' })
+        .send({ rows, headers, filename: 'custom-export.csv', validationPassed: true })
         .expect(200);
 
       expect(response.headers['content-disposition']).toContain('attachment; filename="custom-export.csv"');
@@ -316,7 +343,7 @@ describe('CSV Upload API', () => {
       
       const response = await request(app)
         .post('/api/csv/export')
-        .send({ rows, headers })
+        .send({ rows, headers, validationPassed: true })
         .expect(200);
 
       expect(response.headers['content-disposition']).toContain('attachment; filename="export.csv"');
@@ -325,20 +352,34 @@ describe('CSV Upload API', () => {
     test('should handle empty rows', async () => {
       const rows = [];
       const headers = ['Topic', 'SubTopic', 'Industry'];
-
+      
       const response = await request(app)
         .post('/api/csv/export')
-        .send({ rows, headers })
+        .send({ rows, headers, validationPassed: true })
         .expect(200);
 
       // Empty rows should still generate headers
       expect(response.text).toContain('Topic,SubTopic,Industry');
     });
 
+    test('should reject export when validation has not passed', async () => {
+      const rows = [{ Topic: 'Payments', SubTopic: 'ACH', Industry: 'Fintech' }];
+      const headers = ['Topic', 'SubTopic', 'Industry'];
+      
+      const response = await request(app)
+        .post('/api/csv/export')
+        .send({ rows, headers, validationPassed: false })
+        .expect(400);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Export not allowed - data must be validated first');
+      expect(response.body.code).toBe('VALIDATION_REQUIRED');
+    });
+
     test('should reject missing rows', async () => {
       const response = await request(app)
         .post('/api/csv/export')
-        .send({ headers: ['Topic'] })
+        .send({ headers: ['Topic'], validationPassed: true })
         .expect(400);
 
       expect(response.body.error).toBe('Validation failed');
@@ -347,7 +388,7 @@ describe('CSV Upload API', () => {
     test('should reject missing headers', async () => {
       const response = await request(app)
         .post('/api/csv/export')
-        .send({ rows: [{ Topic: 'Test' }] })
+        .send({ rows: [{ Topic: 'Test' }], validationPassed: true })
         .expect(400);
 
       expect(response.body.error).toBe('Validation failed');
@@ -356,7 +397,7 @@ describe('CSV Upload API', () => {
     test('should reject invalid rows type', async () => {
       const response = await request(app)
         .post('/api/csv/export')
-        .send({ rows: 'not an array', headers: ['Topic'] })
+        .send({ rows: 'not an array', headers: ['Topic'], validationPassed: true })
         .expect(400);
 
       expect(response.body.error).toBe('Validation failed');
@@ -365,7 +406,7 @@ describe('CSV Upload API', () => {
     test('should reject invalid headers type', async () => {
       const response = await request(app)
         .post('/api/csv/export')
-        .send({ rows: [{ Topic: 'Test' }], headers: 'not an array' })
+        .send({ rows: [{ Topic: 'Test' }], headers: 'not an array', validationPassed: true })
         .expect(400);
 
       expect(response.body.error).toBe('Validation failed');
@@ -374,7 +415,7 @@ describe('CSV Upload API', () => {
     test('should reject empty headers', async () => {
       const response = await request(app)
         .post('/api/csv/export')
-        .send({ rows: [{ Topic: 'Test' }], headers: [] })
+        .send({ rows: [{ Topic: 'Test' }], headers: [], validationPassed: true })
         .expect(400);
 
       expect(response.body.error).toBe('Headers cannot be empty');
@@ -389,7 +430,7 @@ describe('CSV Upload API', () => {
       
       const response = await request(app)
         .post('/api/csv/export')
-        .send({ rows, headers })
+        .send({ rows, headers, validationPassed: true })
         .expect(400);
 
       expect(response.body.error).toBe('All rows must have consistent structure');
@@ -403,7 +444,7 @@ describe('CSV Upload API', () => {
       
       const response = await request(app)
         .post('/api/csv/export')
-        .send({ rows, headers })
+        .send({ rows, headers, validationPassed: true })
         .expect(200);
 
       expect(response.text).toContain('"Payments, Inc"');

@@ -1,11 +1,14 @@
 import React, { useState, useRef } from 'react'
 import axios from 'axios'
+import HeaderMappingModal from './HeaderMappingModal'
 
 const CsvUploader = ({ onFilesUploaded }) => {
   const [files, setFiles] = useState([])
   const [isUploading, setIsUploading] = useState(false)
   const [error, setError] = useState('')
   const [isDragOver, setIsDragOver] = useState(false)
+  const [showMappingModal, setShowMappingModal] = useState(false)
+  const [currentFileForMapping, setCurrentFileForMapping] = useState(null)
   const fileInputRef = useRef(null)
 
   const handleFileSelect = (selectedFiles) => {
@@ -25,20 +28,12 @@ const CsvUploader = ({ onFilesUploaded }) => {
     }
 
     const newFiles = csvFiles.map(file => {
-      // Auto-detect role based on filename
-      let role = 'auto'
-      const filename = file.name.toLowerCase()
-      if (filename.includes('string')) {
-        role = 'strings'
-      } else if (filename.includes('classification')) {
-        role = 'classifications'
-      }
-      
+      // Role will be determined by backend header validation
       return {
         file,
         name: file.name,
         size: file.size,
-        role,
+        role: 'auto', // Will be determined by backend
         parsed: null,
         error: null
       }
@@ -68,11 +63,7 @@ const CsvUploader = ({ onFilesUploaded }) => {
     handleFileSelect(e.target.files)
   }
 
-  const handleRoleChange = (index, role) => {
-    setFiles(prev => prev.map((file, i) => 
-      i === index ? { ...file, role } : file
-    ))
-  }
+  // Role changes are no longer needed - roles are determined by backend header validation
 
   const removeFile = (index) => {
     setFiles(prev => prev.filter((_, i) => i !== index))
@@ -84,12 +75,7 @@ const CsvUploader = ({ onFilesUploaded }) => {
       return
     }
 
-    // Check if all files have roles assigned
-    const unassignedFiles = files.filter(file => file.role === 'auto')
-    if (unassignedFiles.length > 0) {
-      setError('Please assign roles to all files (strings or classifications)')
-      return
-    }
+    // Files will be processed by backend which will determine roles based on headers
 
     setIsUploading(true)
     setError('')
@@ -107,29 +93,42 @@ const CsvUploader = ({ onFilesUploaded }) => {
       })
 
       if (response.data.success) {
-        const processedFiles = response.data.files.map((fileData, index) => {
-          const fileObj = files[index]
+        const processedFiles = []
+        const filesToMap = []
+        
+        // Process each file response
+        Object.entries(response.data.files).forEach(([filename, fileData]) => {
+          const fileObj = files.find(f => f.name === filename)
+          if (!fileObj) return
           
-          // Auto-detect role based on headers if still 'auto'
-          let role = fileObj.role
-          if (role === 'auto' && fileData.headers) {
-            const headers = fileData.headers.map(h => h.toLowerCase())
-            if (headers.includes('classification')) {
-              role = 'classifications'
-            } else if (headers.includes('topic') && headers.includes('subtopic')) {
-              role = 'strings'
-            }
-          }
+          // Use backend role detection exclusively
+          let role = fileData.detectedRole
           
-          return {
-            ...fileObj,
-            parsed: fileData,
-            role: role
+          // If role is ambiguous or unknown, mark for mapping
+          if (fileData.ambiguous || role === 'unknown') {
+            filesToMap.push({
+              ...fileObj,
+              parsed: fileData,
+              role: 'pending_mapping'
+            })
+          } else {
+            processedFiles.push({
+              ...fileObj,
+              parsed: fileData,
+              role: role
+            })
           }
         })
 
-        setFiles(processedFiles)
-        onFilesUploaded(processedFiles)
+        // If there are files that need mapping, show the modal
+        if (filesToMap.length > 0) {
+          setCurrentFileForMapping(filesToMap[0])
+          setShowMappingModal(true)
+          setFiles([...processedFiles, ...filesToMap])
+        } else {
+          setFiles(processedFiles)
+          onFilesUploaded(processedFiles)
+        }
       } else {
         setError('Upload failed: ' + (response.data.error || 'Unknown error'))
       }
@@ -138,6 +137,53 @@ const CsvUploader = ({ onFilesUploaded }) => {
     } finally {
       setIsUploading(false)
     }
+  }
+
+  const handleMappingConfirm = (mappingData) => {
+    const { role, headerMapping } = mappingData
+    
+    // Update the current file with the mapping
+    setFiles(prev => prev.map(file => {
+      if (file === currentFileForMapping) {
+        return {
+          ...file,
+          role: role,
+          parsed: {
+            ...file.parsed,
+            detectedRole: role,
+            headerMapping: headerMapping
+          }
+        }
+      }
+      return file
+    }))
+
+    // Check if there are more files that need mapping
+    const remainingFilesToMap = files.filter(f => f.role === 'pending_mapping')
+    if (remainingFilesToMap.length > 1) {
+      // Show next file for mapping
+      setCurrentFileForMapping(remainingFilesToMap[1])
+    } else {
+      // All files mapped, proceed with upload
+      setShowMappingModal(false)
+      setCurrentFileForMapping(null)
+      
+      // Filter out pending mapping files and call onFilesUploaded
+      const finalFiles = files.map(file => 
+        file.role === 'pending_mapping' 
+          ? { ...file, role: role, parsed: { ...file.parsed, detectedRole: role, headerMapping: headerMapping } }
+          : file
+      ).filter(file => file.role !== 'pending_mapping')
+      
+      onFilesUploaded(finalFiles)
+    }
+  }
+
+  const handleMappingCancel = () => {
+    setShowMappingModal(false)
+    setCurrentFileForMapping(null)
+    // Remove files that were pending mapping
+    setFiles(prev => prev.filter(file => file.role !== 'pending_mapping'))
   }
 
   const formatFileSize = (bytes) => {
@@ -188,15 +234,16 @@ const CsvUploader = ({ onFilesUploaded }) => {
               </div>
               
               <div className="file-role">
-                <label>Role:</label>
-                <select
-                  value={fileObj.role}
-                  onChange={(e) => handleRoleChange(index, e.target.value)}
-                >
-                  <option value="auto">Auto-detect</option>
-                  <option value="strings">Strings Data</option>
-                  <option value="classifications">Classifications Data</option>
-                </select>
+                <label>Status:</label>
+                {fileObj.role === 'pending_mapping' ? (
+                  <span className="status-pending">⚠️ Needs Header Mapping</span>
+                ) : fileObj.role === 'strings' ? (
+                  <span className="status-strings">📝 Strings Data</span>
+                ) : fileObj.role === 'classifications' ? (
+                  <span className="status-classifications">🏷️ Classifications Data</span>
+                ) : (
+                  <span className="status-auto">🔍 Auto-detecting...</span>
+                )}
               </div>
 
               <button
@@ -226,6 +273,13 @@ const CsvUploader = ({ onFilesUploaded }) => {
           </div>
         </div>
       )}
+
+      <HeaderMappingModal
+        isOpen={showMappingModal}
+        onClose={handleMappingCancel}
+        fileData={currentFileForMapping?.parsed}
+        onConfirmMapping={handleMappingConfirm}
+      />
     </div>
   )
 }

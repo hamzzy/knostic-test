@@ -3,6 +3,7 @@ const { Readable, PassThrough } = require('stream');
 const csv = require('fast-csv');
 const logger = require('../config/logger');
 const { CsvParseError } = require('../utils/errors');
+const { parseCSV: parseCSVWithValidation } = require('../utils/csvParser');
 
 class CsvService {
   /**
@@ -33,54 +34,20 @@ class CsvService {
   }
 
   /**
-   * Parses CSV buffer and returns normalized data
+   * Parses CSV buffer and returns comprehensive validation data
    * @param {Buffer} buffer - CSV file buffer
-   * @returns {Promise<{headers: string[], rows: Object[]}>} - Parsed data with normalized headers
+   * @returns {Promise<Object>} - Parsed data with validation information
    */
   async parseCSV(buffer) {
-    return new Promise((resolve, reject) => {
-      const rows = [];
-      let headers = [];
-      let isFirstRow = true;
-      
-      const parser = parse({
-        columns: false,
-        skip_empty_lines: true,
-        trim: true,
-        relax_column_count: true,
-        skip_records_with_error: true
-      });
-      
-      parser.on('readable', function() {
-        let record;
-        while ((record = parser.read()) !== null) {
-          if (isFirstRow) {
-            headers = record.map(header => this.normalizeHeader(header));
-            isFirstRow = false;
-          } else {
-            const rowObj = {};
-            record.forEach((value, index) => {
-              const header = headers[index] || `column_${index}`;
-              rowObj[header] = value;
-            });
-            rows.push(rowObj);
-          }
-        }
-      }.bind(this));
-      
-      parser.on('error', function(err) {
-        logger.error('CSV parsing error:', err);
-        reject(new CsvParseError(`CSV parsing error: ${err.message}`, err));
-      });
-      
-      parser.on('end', function() {
-        logger.info(`Successfully parsed CSV with ${headers.length} headers and ${rows.length} rows`);
-        resolve({ headers, rows });
-      });
-      
-      parser.write(buffer);
-      parser.end();
-    });
+    try {
+      logger.info(`Parsing CSV buffer (${buffer.length} bytes)`);
+      const result = await parseCSVWithValidation(buffer);
+      logger.info(`Successfully parsed CSV with ${result.headers.length} headers and ${result.rows.length} rows`);
+      return result;
+    } catch (error) {
+      logger.error(`CSV parsing failed: ${error.message}`, { stack: error.stack });
+      throw new CsvParseError(`Failed to parse CSV: ${error.message}`);
+    }
   }
 
   /**

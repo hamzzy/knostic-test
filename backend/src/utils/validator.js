@@ -3,13 +3,15 @@
  * Validates that each strings row has a corresponding classification
  */
 
+const { normalizeValue } = require('./headerValidator');
+
 /**
  * Normalizes a value for comparison (trim, lowercase)
  * @param {any} value - The value to normalize
  * @returns {string} - Normalized string
  */
 function normalize(value) {
-  return String(value || '').trim().toLowerCase();
+  return normalizeValue(value);
 }
 
 /**

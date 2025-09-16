@@ -1,42 +1,24 @@
 const { parse } = require('csv-parse');
+const { normalizeHeader, createHeaderMapping, detectRole, mapRowsToCanonical } = require('./headerValidator');
 
 /**
- * Normalizes CSV headers to canonical format
+ * Normalizes CSV headers to canonical format (legacy function for backward compatibility)
  * @param {string} header - The original header string
  * @returns {string} - Normalized header
  */
-function normalizeHeader(header) {
-  if (!header || typeof header !== 'string') {
-    return '';
-  }
-  
-  // Trim and convert to lowercase, then remove spaces, hyphens, underscores
-  const normalized = header.trim().toLowerCase().replace(/[\s\-_]/g, '');
-  
-  // Map variants to canonical keys
-  const headerMap = {
-    'subtopic': 'SubTopic',
-    'subtopic': 'SubTopic',
-    'topic': 'Topic',
-    'industry': 'Industry',
-    'classification': 'Classification',
-    'prompt': 'Prompt',
-    'risks': 'Risks',
-    'keywords': 'Keywords'
-  };
-  
-  return headerMap[normalized] || header.trim();
+function normalizeHeaderLegacy(header) {
+  return normalizeHeader(header);
 }
 
 /**
- * Parses CSV buffer and returns normalized data
+ * Parses CSV buffer and returns comprehensive validation data
  * @param {Buffer} buffer - CSV file buffer
- * @returns {Promise<{headers: string[], rows: Object[]}>} - Parsed data with normalized headers
+ * @returns {Promise<Object>} - Parsed data with validation information
  */
 async function parseCSV(buffer) {
   return new Promise((resolve, reject) => {
     const rows = [];
-    let headers = [];
+    let originalHeaders = [];
     let isFirstRow = true;
     
     const parser = parse({
@@ -52,13 +34,13 @@ async function parseCSV(buffer) {
       while ((record = parser.read()) !== null) {
         if (isFirstRow) {
           // First row contains headers
-          headers = record.map(normalizeHeader);
+          originalHeaders = record;
           isFirstRow = false;
         } else {
-          // Convert row to object with normalized headers
+          // Convert row to object with original headers as keys
           const rowObj = {};
           record.forEach((value, index) => {
-            const header = headers[index] || `column_${index}`;
+            const header = originalHeaders[index] || `column_${index}`;
             rowObj[header] = value;
           });
           rows.push(rowObj);
@@ -71,9 +53,21 @@ async function parseCSV(buffer) {
     });
     
     parser.on('end', function() {
+      // Create header mapping and detect role
+      const headerMapping = createHeaderMapping(originalHeaders);
+      const roleDetection = detectRole(originalHeaders);
+      
+      // Map rows to canonical field names
+      const canonicalRows = mapRowsToCanonical(rows, headerMapping);
+      
       resolve({
-        headers,
-        rows
+        originalHeaders,
+        headers: Object.values(headerMapping), // Canonical headers
+        rows: canonicalRows,
+        headerMapping,
+        roleDetection,
+        // Legacy format for backward compatibility
+        normalizedHeaders: Object.values(headerMapping)
       });
     });
     
@@ -102,6 +96,6 @@ function validateHeaders(headers, requiredHeaders = []) {
 
 module.exports = {
   parseCSV,
-  normalizeHeader,
+  normalizeHeader: normalizeHeaderLegacy, // Legacy compatibility
   validateHeaders
 };

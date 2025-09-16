@@ -1,6 +1,14 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 
-const ValidationResults = ({ results }) => {
+const ValidationResults = ({ results, onInvalidRowsChange }) => {
+  useEffect(() => {
+    if (results && results.invalidRows && onInvalidRowsChange) {
+      const invalidIndices = results.invalidRows.map(row => row.rowIndex)
+      onInvalidRowsChange(invalidIndices)
+    } else if (onInvalidRowsChange) {
+      onInvalidRowsChange([])
+    }
+  }, [results, onInvalidRowsChange])
   if (results.error) {
     return (
       <div className="error">

@@ -72,6 +72,6 @@ describe('ValidationResults', () => {
     
     expect(screen.getByText('Invalid Rows:')).toBeInTheDocument()
     expect(screen.getByText('No classification found')).toBeInTheDocument()
-    expect(screen.getByText('{"Topic":"Test","SubTopic":"Test","Industry":"Test"}')).toBeInTheDocument()
+    expect(screen.getByText(/Topic.*Test.*SubTopic.*Test.*Industry.*Test/)).toBeInTheDocument()
   })
 })

@@ -5,7 +5,7 @@ const { FileUploadError, ValidationError } = require('../utils/errors');
 
 class CsvController {
   /**
-   * Upload and parse CSV files
+   * Upload and parse CSV files with comprehensive header validation
    */
   async uploadFiles(req, res, next) {
     try {
@@ -17,27 +17,69 @@ class CsvController {
 
       logger.info(`Processing ${files.length} uploaded files`);
 
-      const results = [];
+      const results = {};
       
       for (const file of files) {
         try {
           logger.info(`Parsing file: ${file.originalname} (${file.size} bytes)`);
-          const { headers, rows } = await csvService.parseCSV(file.buffer);
+          const parsedData = await csvService.parseCSV(file.buffer);
           
-          results.push({
-            filename: file.originalname,
+          const {
+            originalHeaders,
             headers,
             rows,
-            rowCount: rows.length
-          });
+            headerMapping,
+            roleDetection
+          } = parsedData;
           
-          logger.info(`Successfully parsed ${file.originalname}: ${rows.length} rows`);
+          // Determine if headers are valid for the detected role
+          let headerValid = false;
+          let missingRequiredHeaders = [];
+          let extraHeaders = [];
+          
+          if (roleDetection.detectedRole === 'strings') {
+            headerValid = roleDetection.stringsValidation.valid;
+            missingRequiredHeaders = roleDetection.stringsValidation.missingRequiredHeaders;
+            extraHeaders = roleDetection.stringsValidation.extraHeaders;
+          } else if (roleDetection.detectedRole === 'classifications') {
+            headerValid = roleDetection.classificationsValidation.valid;
+            missingRequiredHeaders = roleDetection.classificationsValidation.missingRequiredHeaders;
+            extraHeaders = roleDetection.classificationsValidation.extraHeaders;
+          } else if (roleDetection.ambiguous) {
+            // For ambiguous files, we need user input to determine role
+            headerValid = false;
+            missingRequiredHeaders = [];
+            extraHeaders = [];
+          } else {
+            // Unknown role - no valid headers detected
+            headerValid = false;
+            missingRequiredHeaders = ['Unable to determine required headers'];
+            extraHeaders = [];
+          }
+          
+          results[file.originalname] = {
+            originalName: file.originalname,
+            headers: Object.values(headerMapping), // Canonical headers
+            normalizedHeaderMap: headerMapping,
+            rows: rows,
+            rowCount: rows.length,
+            isStringsCandidate: roleDetection.isStringsCandidate,
+            isClassificationsCandidate: roleDetection.isClassificationsCandidate,
+            detectedRole: roleDetection.detectedRole,
+            ambiguous: roleDetection.ambiguous,
+            headerValid: headerValid,
+            missingRequiredHeaders: missingRequiredHeaders,
+            extraHeaders: extraHeaders
+          };
+          
+          logger.info(`Successfully parsed ${file.originalname}: ${rows.length} rows, role: ${roleDetection.detectedRole}, valid: ${headerValid}`);
         } catch (parseError) {
           logger.error(`Failed to parse ${file.originalname}:`, parseError);
-          results.push({
-            filename: file.originalname,
-            error: parseError.message
-          });
+          results[file.originalname] = {
+            originalName: file.originalname,
+            error: parseError.message,
+            parseError: true
+          };
         }
       }
 
@@ -53,46 +95,73 @@ class CsvController {
   }
 
   /**
-   * Validate strings against classifications
+   * Authoritative validation endpoint for strings vs classifications
    */
   async validateData(req, res, next) {
     try {
-      const { stringsData, classificationsData } = req.body;
+      const { strings, classifications } = req.body;
       
-      logger.info(`Validating ${stringsData.length} strings against ${classificationsData.length} classifications`);
+      if (!strings || !classifications) {
+        throw new ValidationError('Both strings and classifications data are required');
+      }
+      
+      const { headers: stringsHeaders, rows: stringsRows } = strings;
+      const { headers: classificationsHeaders, rows: classificationsRows } = classifications;
+      
+      logger.info(`Validating ${stringsRows.length} strings against ${classificationsRows.length} classifications`);
 
-      // Validate required headers for strings data
-      const stringsHeaderValidation = validationService.validateRequiredHeaders(
-        stringsData, 
-        ['Topic', 'SubTopic', 'Industry']
-      );
+      // Re-validate headers using the new validation system
+      const { validateHeaders } = require('../utils/headerValidator');
+      
+      const stringsHeaderValidation = validateHeaders(stringsHeaders, 'strings');
       if (!stringsHeaderValidation.valid) {
-        throw new ValidationError(`Strings data validation failed: ${stringsHeaderValidation.reason}`);
+        return res.status(400).json({
+          success: false,
+          valid: false,
+          headerErrors: [{
+            type: 'strings',
+            missingRequiredHeaders: stringsHeaderValidation.missingRequiredHeaders,
+            reason: stringsHeaderValidation.reason
+          }],
+          invalidRows: []
+        });
       }
       
-      // Validate required headers for classifications data
-      const classificationsHeaderValidation = validationService.validateRequiredHeaders(
-        classificationsData, 
-        ['Topic', 'SubTopic', 'Industry']
-      );
+      const classificationsHeaderValidation = validateHeaders(classificationsHeaders, 'classifications');
       if (!classificationsHeaderValidation.valid) {
-        throw new ValidationError(`Classifications data validation failed: ${classificationsHeaderValidation.reason}`);
+        return res.status(400).json({
+          success: false,
+          valid: false,
+          headerErrors: [{
+            type: 'classifications',
+            missingRequiredHeaders: classificationsHeaderValidation.missingRequiredHeaders,
+            reason: classificationsHeaderValidation.reason
+          }],
+          invalidRows: []
+        });
       }
       
-      // Perform validation
+      // Perform data integrity validation
       const validationResult = validationService.validateStringsAgainstClassifications(
-        stringsData, 
-        classificationsData
+        stringsRows, 
+        classificationsRows
       );
       
-      logger.info(`Validation completed: ${validationResult.valid ? 'PASSED' : 'FAILED'}`);
-      
-      res.json({
-        valid: validationResult.valid,
-        invalidRows: validationResult.invalidRows,
-        totalRows: stringsData.length,
-        invalidCount: validationResult.invalidRows.length
-      });
+      if (validationResult.valid) {
+        logger.info('Validation completed: PASSED');
+        return res.json({
+          success: true,
+          valid: true
+        });
+      } else {
+        logger.warn(`Validation completed: FAILED - ${validationResult.invalidRows.length} invalid rows`);
+        return res.status(400).json({
+          success: false,
+          valid: false,
+          headerErrors: [],
+          invalidRows: validationResult.invalidRows
+        });
+      }
       
     } catch (error) {
       logger.error('Validation error:', error);
@@ -101,11 +170,20 @@ class CsvController {
   }
 
   /**
-   * Export data as CSV
+   * Export data as CSV (only when validation passes)
    */
   async exportData(req, res, next) {
     try {
-      const { rows, headers, filename = 'export.csv' } = req.body;
+      const { rows, headers, filename = 'export.csv', validationPassed = false } = req.body;
+      
+      // Only allow export if validation has passed
+      if (!validationPassed) {
+        return res.status(400).json({
+          success: false,
+          error: 'Export not allowed - data must be validated first',
+          code: 'VALIDATION_REQUIRED'
+        });
+      }
       
       logger.info(`Exporting ${rows.length} rows with ${headers.length} headers as ${filename}`);
 

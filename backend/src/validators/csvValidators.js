@@ -21,16 +21,28 @@ const validateCsvUpload = [
 ];
 
 const validateCsvValidation = [
-  body('stringsData')
+  body('strings')
+    .isObject()
+    .withMessage('strings is required and must be an object'),
+  body('strings.headers')
     .isArray()
-    .withMessage('stringsData is required and must be an array')
+    .withMessage('strings.headers is required and must be an array')
     .notEmpty()
-    .withMessage('stringsData cannot be empty'),
-  body('classificationsData')
+    .withMessage('strings.headers cannot be empty'),
+  body('strings.rows')
     .isArray()
-    .withMessage('classificationsData is required and must be an array')
+    .withMessage('strings.rows is required and must be an array'),
+  body('classifications')
+    .isObject()
+    .withMessage('classifications is required and must be an object'),
+  body('classifications.headers')
+    .isArray()
+    .withMessage('classifications.headers is required and must be an array')
     .notEmpty()
-    .withMessage('classificationsData cannot be empty'),
+    .withMessage('classifications.headers cannot be empty'),
+  body('classifications.rows')
+    .isArray()
+    .withMessage('classifications.rows is required and must be an array'),
   validateRequest
 ];
 
@@ -47,6 +59,9 @@ const validateCsvExport = [
     .optional()
     .isString()
     .withMessage('filename must be a string'),
+  body('validationPassed')
+    .isBoolean()
+    .withMessage('validationPassed is required and must be a boolean'),
   validateRequest
 ];
 

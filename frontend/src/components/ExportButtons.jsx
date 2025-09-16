@@ -1,53 +1,14 @@
 import React, { useState } from 'react'
-import ValidationResults from './ValidationResults'
 
 const ExportButtons = ({ 
   stringsData, 
   classificationsData, 
   stringsHeaders, 
-  classificationsHeaders 
+  classificationsHeaders,
+  validationPassed = false
 }) => {
   const [isExporting, setIsExporting] = useState(false)
-  const [isValidating, setIsValidating] = useState(false)
   const [exportError, setExportError] = useState('')
-  const [validationResults, setValidationResults] = useState(null)
-  const [showValidationResults, setShowValidationResults] = useState(false)
-
-  const validateData = async () => {
-    setIsValidating(true)
-    setExportError('')
-    setShowValidationResults(false)
-    
-    try {
-      const response = await fetch('/api/csv/validate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          stringsData: stringsData,
-          classificationsData: classificationsData
-        })
-      })
-
-      const result = await response.json()
-      setValidationResults(result)
-      setShowValidationResults(true)
-      
-      return result.valid
-    } catch (error) {
-      console.error('Validation error:', error)
-      setExportError('Validation failed: ' + error.message)
-      setValidationResults({
-        valid: false,
-        error: 'Validation failed: ' + error.message
-      })
-      setShowValidationResults(true)
-      return false
-    } finally {
-      setIsValidating(false)
-    }
-  }
 
   const downloadCSV = (data, headers, filename) => {
     const csvContent = [
@@ -76,14 +37,6 @@ const ExportButtons = ({
   }
 
   const handleExport = async (data, headers, filename) => {
-    // First validate the data
-    const isValid = await validateData()
-    
-    if (!isValid) {
-      setExportError('Export blocked: Data validation failed. Please fix the errors above before exporting.')
-      return
-    }
-
     setIsExporting(true)
     setExportError('')
 
@@ -96,7 +49,8 @@ const ExportButtons = ({
         body: JSON.stringify({
           rows: data,
           headers: headers,
-          filename: filename
+          filename: filename,
+          validationPassed: validationPassed
         })
       })
 
@@ -152,22 +106,27 @@ const ExportButtons = ({
     <div>
       {exportError && <div className="error">{exportError}</div>}
       
+      {!validationPassed && (
+        <div className="warning" style={{ 
+          background: '#fef3c7', 
+          border: '1px solid #f59e0b', 
+          borderRadius: '6px', 
+          padding: '12px', 
+          marginBottom: '16px',
+          color: '#92400e'
+        }}>
+          ⚠️ <strong>Warning:</strong> Data must be validated before export. Please run validation first.
+        </div>
+      )}
+      
       <div className="button-group">
-        <button
-          className="button button-secondary"
-          onClick={validateData}
-          disabled={isValidating || isExporting}
-        >
-          {isValidating ? 'Validating...' : 'Validate Data Only'}
-        </button>
-        
         {stringsData && stringsData.length > 0 && (
           <button
             className="button button-primary"
             onClick={handleExportStrings}
-            disabled={isExporting || isValidating}
+            disabled={isExporting}
           >
-            {isValidating ? 'Validating...' : isExporting ? 'Exporting...' : 'Export Strings Data'}
+            {isExporting ? 'Exporting...' : 'Export Strings Data'}
           </button>
         )}
         
@@ -175,9 +134,9 @@ const ExportButtons = ({
           <button
             className="button button-primary"
             onClick={handleExportClassifications}
-            disabled={isExporting || isValidating}
+            disabled={isExporting}
           >
-            {isValidating ? 'Validating...' : isExporting ? 'Exporting...' : 'Export Classifications Data'}
+            {isExporting ? 'Exporting...' : 'Export Classifications Data'}
           </button>
         )}
         
@@ -185,21 +144,15 @@ const ExportButtons = ({
           <button
             className="button button-success"
             onClick={handleExportAll}
-            disabled={isExporting || isValidating}
+            disabled={isExporting}
           >
-            {isValidating ? 'Validating...' : isExporting ? 'Exporting...' : 'Export All Data'}
+            {isExporting ? 'Exporting...' : 'Export All Data'}
           </button>
         )}
       </div>
 
-      {showValidationResults && validationResults && (
-        <div style={{ marginTop: '20px' }}>
-          <ValidationResults results={validationResults} />
-        </div>
-      )}
-
       <div style={{ marginTop: '16px', fontSize: '14px', color: '#666' }}>
-        <p>💡 Data will be validated before export. Invalid data will be highlighted and export will be blocked.</p>
+        <p>💡 Exported files will be downloaded to your default download folder.</p>
       </div>
     </div>
   )

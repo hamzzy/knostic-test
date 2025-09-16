@@ -1,5 +1,6 @@
 import React from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { vi } from 'vitest'
 import EditableTable from '../EditableTable'
 
 const mockData = [
@@ -48,7 +49,7 @@ describe('EditableTable', () => {
   })
 
   test('calls onChange when data changes', async () => {
-    const mockOnChange = jest.fn()
+    const mockOnChange = vi.fn()
     render(<EditableTable data={mockData} headers={mockHeaders} onChange={mockOnChange} editable={true} />)
     
     // Click on a cell to edit
@@ -66,7 +67,7 @@ describe('EditableTable', () => {
   })
 
   test('adds new row when add button is clicked', () => {
-    const mockOnChange = jest.fn()
+    const mockOnChange = vi.fn()
     render(<EditableTable data={mockData} headers={mockHeaders} onChange={mockOnChange} editable={true} />)
     
     const addButton = screen.getByText('Add Row')
@@ -79,7 +80,7 @@ describe('EditableTable', () => {
   })
 
   test('deletes row when delete button is clicked', () => {
-    const mockOnChange = jest.fn()
+    const mockOnChange = vi.fn()
     render(<EditableTable data={mockData} headers={mockHeaders} onChange={mockOnChange} editable={true} />)
     
     const deleteButtons = screen.getAllByText('Delete')

@@ -7,6 +7,8 @@ function App() {
   const [uploadedFiles, setUploadedFiles] = useState([])
   const [stringsData, setStringsData] = useState([])
   const [classificationsData, setClassificationsData] = useState([])
+  const [editedStringsData, setEditedStringsData] = useState([])
+  const [editedClassificationsData, setEditedClassificationsData] = useState([])
   const [currentView, setCurrentView] = useState('upload') // 'upload', 'preview', 'edit'
 
   const handleFilesUploaded = (files) => {
@@ -17,16 +19,16 @@ function App() {
     const strings = files.find(file => file.role === 'strings')
     const classifications = files.find(file => file.role === 'classifications')
     
-    console.log('Strings file:', strings)
-    console.log('Classifications file:', classifications)
     
     if (strings && strings.parsed) {
-      console.log('Setting strings data:', strings.parsed.rows)
-      setStringsData(strings.parsed.rows || [])
+      const stringsRows = strings.parsed.rows || []
+      setStringsData(stringsRows)
+      setEditedStringsData(stringsRows)
     }
     if (classifications && classifications.parsed) {
-      console.log('Setting classifications data:', classifications.parsed.rows)
-      setClassificationsData(classifications.parsed.rows || [])
+      const classificationsRows = classifications.parsed.rows || []
+      setClassificationsData(classificationsRows)
+      setEditedClassificationsData(classificationsRows)
     }
     
     if (strings || classifications) {
@@ -39,7 +41,15 @@ function App() {
   }
 
   const handleEditData = () => {
-    setCurrentView('edit')
+    setCurrentView(currentView === 'edit' ? 'preview' : 'edit')
+  }
+
+  const handleStringsDataChange = (newData) => {
+    setEditedStringsData(newData)
+  }
+
+  const handleClassificationsDataChange = (newData) => {
+    setEditedClassificationsData(newData)
   }
 
   return (
@@ -55,10 +65,14 @@ function App() {
 
       {(currentView === 'preview' || currentView === 'edit') && (
         <DataPreview
-          stringsData={stringsData}
-          classificationsData={classificationsData}
+          stringsData={editedStringsData.length > 0 ? editedStringsData : stringsData}
+          classificationsData={editedClassificationsData.length > 0 ? editedClassificationsData : classificationsData}
+          editedStringsData={editedStringsData}
+          editedClassificationsData={editedClassificationsData}
           onBackToUpload={handleBackToUpload}
           onEditData={handleEditData}
+          onStringsDataChange={handleStringsDataChange}
+          onClassificationsDataChange={handleClassificationsDataChange}
           isEditMode={currentView === 'edit'}
         />
       )}

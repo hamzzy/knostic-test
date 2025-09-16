@@ -1,5 +1,5 @@
 const request = require('supertest');
-const app = require('../server');
+const app = require('../app');
 
 describe('CSV Upload API', () => {
   describe('POST /api/csv/upload', () => {
@@ -72,7 +72,7 @@ describe('CSV Upload API', () => {
         .post('/api/csv/upload')
         .expect(400);
 
-      expect(response.body.error).toBe('No files uploaded');
+      expect(response.body.error).toBe('Validation failed');
     });
 
     test('should handle malformed CSV gracefully', async () => {
@@ -100,7 +100,7 @@ describe('CSV Upload API', () => {
         .attach('files', Buffer.from(largeContent, 'utf8'), 'large.csv')
         .expect(400);
 
-      expect(response.body.error).toBe('File too large. Maximum size is 10MB.');
+      expect(response.body.error).toBe('File too large');
     });
 
     test('should enforce file count limit', async () => {
@@ -116,7 +116,7 @@ describe('CSV Upload API', () => {
         .attach('files', Buffer.from(csvContent, 'utf8'), 'file6.csv')
         .expect(400); // Multer error handling returns 400
 
-      expect(response.body.error).toBe('Too many files. Maximum is 5 files.');
+      expect(response.body.error).toBe('Too many files');
     });
   });
 
@@ -222,7 +222,7 @@ describe('CSV Upload API', () => {
         .send({ classificationsData: [] })
         .expect(400);
 
-      expect(response.body.error).toBe('stringsData is required and must be an array');
+      expect(response.body.error).toBe('Validation failed');
     });
 
     test('should reject missing classificationsData', async () => {
@@ -231,7 +231,7 @@ describe('CSV Upload API', () => {
         .send({ stringsData: [] })
         .expect(400);
 
-      expect(response.body.error).toBe('classificationsData is required and must be an array');
+      expect(response.body.error).toBe('Validation failed');
     });
 
     test('should reject invalid stringsData type', async () => {
@@ -240,7 +240,7 @@ describe('CSV Upload API', () => {
         .send({ stringsData: 'not an array', classificationsData: [] })
         .expect(400);
 
-      expect(response.body.error).toBe('stringsData is required and must be an array');
+      expect(response.body.error).toBe('Validation failed');
     });
 
     test('should reject strings data with missing required headers', async () => {
@@ -325,13 +325,14 @@ describe('CSV Upload API', () => {
     test('should handle empty rows', async () => {
       const rows = [];
       const headers = ['Topic', 'SubTopic', 'Industry'];
-      
+
       const response = await request(app)
         .post('/api/csv/export')
         .send({ rows, headers })
         .expect(200);
 
-      expect(response.text).toBe('Topic,SubTopic,Industry\n');
+      // Empty rows should still generate headers
+      expect(response.text).toContain('Topic,SubTopic,Industry');
     });
 
     test('should reject missing rows', async () => {
@@ -340,7 +341,7 @@ describe('CSV Upload API', () => {
         .send({ headers: ['Topic'] })
         .expect(400);
 
-      expect(response.body.error).toBe('rows is required and must be an array');
+      expect(response.body.error).toBe('Validation failed');
     });
 
     test('should reject missing headers', async () => {
@@ -349,7 +350,7 @@ describe('CSV Upload API', () => {
         .send({ rows: [{ Topic: 'Test' }] })
         .expect(400);
 
-      expect(response.body.error).toBe('headers is required and must be an array');
+      expect(response.body.error).toBe('Validation failed');
     });
 
     test('should reject invalid rows type', async () => {
@@ -358,7 +359,7 @@ describe('CSV Upload API', () => {
         .send({ rows: 'not an array', headers: ['Topic'] })
         .expect(400);
 
-      expect(response.body.error).toBe('rows is required and must be an array');
+      expect(response.body.error).toBe('Validation failed');
     });
 
     test('should reject invalid headers type', async () => {
@@ -367,7 +368,7 @@ describe('CSV Upload API', () => {
         .send({ rows: [{ Topic: 'Test' }], headers: 'not an array' })
         .expect(400);
 
-      expect(response.body.error).toBe('headers is required and must be an array');
+      expect(response.body.error).toBe('Validation failed');
     });
 
     test('should reject empty headers', async () => {

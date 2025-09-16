@@ -46,7 +46,7 @@ COPY --from=builder /app/backend ./backend
 COPY --from=builder /app/backend/node_modules ./backend/node_modules
 
 # Copy built frontend
-COPY --from=builder /app/frontend/dist ./backend/public
+COPY --from=builder /app/frontend/dist ./backend/src/public
 
 # Set ownership
 RUN chown -R nextjs:nodejs /app

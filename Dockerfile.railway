@@ -1,4 +1,4 @@
-# Multi-stage Dockerfile for Knostic CSV Manager
+# Railway-optimized Dockerfile for Knostic CSV Manager
 FROM node:18-alpine AS base
 
 # Install dependencies only when needed
@@ -37,7 +37,7 @@ RUN npm run build
 FROM base AS runner
 WORKDIR /app
 
-# Create non-root user for security
+# Create non-root user
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 

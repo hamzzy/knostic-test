@@ -10,6 +10,7 @@ const DataPreview = ({
   onEditData,
   isEditMode 
 }) => {
+  console.log('DataPreview received:', { stringsData, classificationsData })
   const [validationResults, setValidationResults] = useState(null)
   const [isValidating, setIsValidating] = useState(false)
   const [editedStringsData, setEditedStringsData] = useState(stringsData)

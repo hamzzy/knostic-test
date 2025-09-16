@@ -10,17 +10,23 @@ function App() {
   const [currentView, setCurrentView] = useState('upload') // 'upload', 'preview', 'edit'
 
   const handleFilesUploaded = (files) => {
+    console.log('Files uploaded:', files)
     setUploadedFiles(files)
     
     // Separate strings and classifications data
     const strings = files.find(file => file.role === 'strings')
     const classifications = files.find(file => file.role === 'classifications')
     
-    if (strings) {
-      setStringsData(strings.rows || [])
+    console.log('Strings file:', strings)
+    console.log('Classifications file:', classifications)
+    
+    if (strings && strings.parsed) {
+      console.log('Setting strings data:', strings.parsed.rows)
+      setStringsData(strings.parsed.rows || [])
     }
-    if (classifications) {
-      setClassificationsData(classifications.rows || [])
+    if (classifications && classifications.parsed) {
+      console.log('Setting classifications data:', classifications.parsed.rows)
+      setClassificationsData(classifications.parsed.rows || [])
     }
     
     if (strings || classifications) {

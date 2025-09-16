@@ -24,14 +24,25 @@ const CsvUploader = ({ onFilesUploaded }) => {
       setError('')
     }
 
-    const newFiles = csvFiles.map(file => ({
-      file,
-      name: file.name,
-      size: file.size,
-      role: 'auto', // Will be determined by user or heuristics
-      parsed: null,
-      error: null
-    }))
+    const newFiles = csvFiles.map(file => {
+      // Auto-detect role based on filename
+      let role = 'auto'
+      const filename = file.name.toLowerCase()
+      if (filename.includes('string')) {
+        role = 'strings'
+      } else if (filename.includes('classification')) {
+        role = 'classifications'
+      }
+      
+      return {
+        file,
+        name: file.name,
+        size: file.size,
+        role,
+        parsed: null,
+        error: null
+      }
+    })
 
     setFiles(prev => [...prev, ...newFiles])
   }
@@ -98,10 +109,22 @@ const CsvUploader = ({ onFilesUploaded }) => {
       if (response.data.success) {
         const processedFiles = response.data.files.map((fileData, index) => {
           const fileObj = files[index]
+          
+          // Auto-detect role based on headers if still 'auto'
+          let role = fileObj.role
+          if (role === 'auto' && fileData.headers) {
+            const headers = fileData.headers.map(h => h.toLowerCase())
+            if (headers.includes('classification')) {
+              role = 'classifications'
+            } else if (headers.includes('topic') && headers.includes('subtopic')) {
+              role = 'strings'
+            }
+          }
+          
           return {
             ...fileObj,
             parsed: fileData,
-            role: fileObj.role
+            role: role
           }
         })
 

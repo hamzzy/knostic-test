@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const path = require('path');
 const { parseCSV, validateHeaders } = require('./csvParser');
+const { validateStringsAgainstClassifications, validateRequiredHeaders } = require('./validator');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -88,14 +89,56 @@ app.post('/api/csv/upload', upload.array('files', 5), async (req, res) => {
 /**
  * POST /api/csv/validate
  * Validate strings against classifications
- * This is a placeholder for Stage 02 implementation
  */
 app.post('/api/csv/validate', (req, res) => {
-  res.json({
-    message: 'Validation endpoint - to be implemented in Stage 02',
-    valid: true,
-    invalidRows: []
-  });
+  try {
+    const { stringsData, classificationsData } = req.body;
+    
+    // Validate input
+    if (!stringsData || !Array.isArray(stringsData)) {
+      return res.status(400).json({
+        error: 'stringsData is required and must be an array'
+      });
+    }
+    
+    if (!classificationsData || !Array.isArray(classificationsData)) {
+      return res.status(400).json({
+        error: 'classificationsData is required and must be an array'
+      });
+    }
+    
+    // Validate required headers for strings data
+    const stringsHeaderValidation = validateRequiredHeaders(stringsData, ['Topic', 'SubTopic', 'Industry']);
+    if (!stringsHeaderValidation.valid) {
+      return res.status(400).json({
+        error: `Strings data validation failed: ${stringsHeaderValidation.reason}`
+      });
+    }
+    
+    // Validate required headers for classifications data
+    const classificationsHeaderValidation = validateRequiredHeaders(classificationsData, ['Topic', 'SubTopic', 'Industry']);
+    if (!classificationsHeaderValidation.valid) {
+      return res.status(400).json({
+        error: `Classifications data validation failed: ${classificationsHeaderValidation.reason}`
+      });
+    }
+    
+    // Perform validation
+    const validationResult = validateStringsAgainstClassifications(stringsData, classificationsData);
+    
+    res.json({
+      valid: validationResult.valid,
+      invalidRows: validationResult.invalidRows,
+      totalRows: stringsData.length,
+      invalidCount: validationResult.invalidRows.length
+    });
+    
+  } catch (error) {
+    console.error('Validation error:', error);
+    res.status(500).json({
+      error: 'Failed to validate data'
+    });
+  }
 });
 
 /**

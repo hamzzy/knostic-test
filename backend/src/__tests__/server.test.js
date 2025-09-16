@@ -132,15 +132,149 @@ describe('CSV Upload API', () => {
   });
 
   describe('POST /api/csv/validate', () => {
-    test('should return placeholder response', async () => {
+    test('should validate strings against classifications successfully', async () => {
+      const stringsData = [
+        { Topic: 'Payments', SubTopic: 'ACH', Industry: 'Fintech' },
+        { Topic: 'Banking', SubTopic: 'Loans', Industry: 'Finance' }
+      ];
+      
+      const classificationsData = [
+        { Topic: 'Payments', SubTopic: 'ACH', Industry: 'Fintech' },
+        { Topic: 'Banking', SubTopic: 'Loans', Industry: 'Finance' },
+        { Topic: 'Payments', SubTopic: 'Credit Cards', Industry: 'Fintech' }
+      ];
+      
       const response = await request(app)
         .post('/api/csv/validate')
-        .send({ data: [] })
+        .send({ stringsData, classificationsData })
         .expect(200);
 
-      expect(response.body.message).toBe('Validation endpoint - to be implemented in Stage 02');
       expect(response.body.valid).toBe(true);
       expect(response.body.invalidRows).toEqual([]);
+      expect(response.body.totalRows).toBe(2);
+      expect(response.body.invalidCount).toBe(0);
+    });
+
+    test('should identify invalid strings', async () => {
+      const stringsData = [
+        { Topic: 'Payments', SubTopic: 'ACH', Industry: 'Fintech' },
+        { Topic: 'Unknown', SubTopic: 'Topic', Industry: 'Missing' }
+      ];
+      
+      const classificationsData = [
+        { Topic: 'Payments', SubTopic: 'ACH', Industry: 'Fintech' }
+      ];
+      
+      const response = await request(app)
+        .post('/api/csv/validate')
+        .send({ stringsData, classificationsData })
+        .expect(200);
+
+      expect(response.body.valid).toBe(false);
+      expect(response.body.invalidRows).toHaveLength(1);
+      expect(response.body.invalidRows[0].rowIndex).toBe(1);
+      expect(response.body.invalidRows[0].reason).toBe("No classification for Topic='Unknown', SubTopic='Topic', Industry='Missing'");
+      expect(response.body.totalRows).toBe(2);
+      expect(response.body.invalidCount).toBe(1);
+    });
+
+    test('should handle missing required fields', async () => {
+      const stringsData = [
+        { Topic: 'Payments', SubTopic: 'ACH', Industry: 'Fintech' },
+        { Topic: 'Payments', SubTopic: '', Industry: 'Fintech' }
+      ];
+      
+      const classificationsData = [
+        { Topic: 'Payments', SubTopic: 'ACH', Industry: 'Fintech' }
+      ];
+      
+      const response = await request(app)
+        .post('/api/csv/validate')
+        .send({ stringsData, classificationsData })
+        .expect(200);
+
+      expect(response.body.valid).toBe(false);
+      expect(response.body.invalidRows).toHaveLength(1);
+      expect(response.body.invalidRows[0].reason).toBe('Missing required fields: SubTopic');
+    });
+
+    test('should handle case-insensitive matching', async () => {
+      const stringsData = [
+        { Topic: 'payments', SubTopic: 'ach', Industry: 'fintech' }
+      ];
+      
+      const classificationsData = [
+        { Topic: 'Payments', SubTopic: 'ACH', Industry: 'Fintech' }
+      ];
+      
+      const response = await request(app)
+        .post('/api/csv/validate')
+        .send({ stringsData, classificationsData })
+        .expect(200);
+
+      expect(response.body.valid).toBe(true);
+      expect(response.body.invalidRows).toEqual([]);
+    });
+
+    test('should reject missing stringsData', async () => {
+      const response = await request(app)
+        .post('/api/csv/validate')
+        .send({ classificationsData: [] })
+        .expect(400);
+
+      expect(response.body.error).toBe('stringsData is required and must be an array');
+    });
+
+    test('should reject missing classificationsData', async () => {
+      const response = await request(app)
+        .post('/api/csv/validate')
+        .send({ stringsData: [] })
+        .expect(400);
+
+      expect(response.body.error).toBe('classificationsData is required and must be an array');
+    });
+
+    test('should reject invalid stringsData type', async () => {
+      const response = await request(app)
+        .post('/api/csv/validate')
+        .send({ stringsData: 'not an array', classificationsData: [] })
+        .expect(400);
+
+      expect(response.body.error).toBe('stringsData is required and must be an array');
+    });
+
+    test('should reject strings data with missing required headers', async () => {
+      const stringsData = [
+        { Topic: 'Payments', SubTopic: 'ACH' } // Missing Industry
+      ];
+      
+      const classificationsData = [
+        { Topic: 'Payments', SubTopic: 'ACH', Industry: 'Fintech' }
+      ];
+      
+      const response = await request(app)
+        .post('/api/csv/validate')
+        .send({ stringsData, classificationsData })
+        .expect(400);
+
+      expect(response.body.error).toContain('Strings data validation failed');
+    });
+
+    test('should reject classifications data with missing required headers', async () => {
+      const stringsData = [
+        { Topic: 'Payments', SubTopic: 'ACH', Industry: 'Fintech' }
+      ];
+      
+      const classificationsData = [
+        { Topic: 'Payments', SubTopic: 'ACH' } // Missing Industry
+      ];
+      
+      const response = await request(app)
+        .post('/api/csv/validate')
+        .send({ stringsData, classificationsData })
+        .expect(400);
+
+      expect(response.body.error).toContain('Classifications data validation failed');
     });
   });
 
